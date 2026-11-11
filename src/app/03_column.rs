@@ -70,6 +70,28 @@ impl KlineColumns {
     pub fn volume(&self) -> &[f64] {
         &self.volume
     }
+
+    /// Consume the column set, returning the raw vectors in column order.
+    #[must_use]
+    pub fn into_parts(
+        self,
+    ) -> (
+        Vec<i64>,
+        Vec<f64>,
+        Vec<f64>,
+        Vec<f64>,
+        Vec<f64>,
+        Vec<f64>,
+    ) {
+        (
+            self.time,
+            self.open,
+            self.high,
+            self.low,
+            self.close,
+            self.volume,
+        )
+    }
 }
 
 impl KlineColumns {

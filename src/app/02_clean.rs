@@ -91,8 +91,6 @@ pub(crate) fn gap_samples(gaps: &[Gap]) -> Vec<Gap> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::DataSource;
-
     fn rec(t: i64) -> Record {
         Record {
             open_time: t,
@@ -105,16 +103,16 @@ mod tests {
     }
 
     fn tf(s: &str) -> Timeframe {
-        Timeframe::parse(DataSource::Binance, s).unwrap()
+        Timeframe::parse(s).unwrap()
     }
 
     #[test]
     fn interval_maps_known_timeframes() {
-        assert_eq!(interval_ms_for_timeframe("1m").unwrap(), 60_000);
-        assert_eq!(interval_ms_for_timeframe("4h").unwrap(), 14_400_000);
+        assert_eq!(interval_ms_for_timeframe("M1").unwrap(), 60_000);
+        assert_eq!(interval_ms_for_timeframe("H1").unwrap(), 3_600_000);
         assert_eq!(interval_ms_for_timeframe("1d").unwrap(), 86_400_000);
         assert_eq!(interval_ms_for_timeframe("D1").unwrap(), 86_400_000);
-        assert_eq!(interval_ms_for_timeframe("M1").unwrap(), 60_000);
+        assert_eq!(interval_ms_for_timeframe("1m").unwrap(), 60_000);
     }
 
     #[test]
@@ -160,7 +158,7 @@ mod tests {
 
     #[test]
     fn clean_sorted_uses_timeframe_interval() {
-        let (out, report) = clean_sorted(vec![rec(0), rec(60_000)], &tf("1m"));
+        let (out, report) = clean_sorted(vec![rec(0), rec(60_000)], &tf("M1"));
         assert_eq!(out.len(), 2);
         assert!(report.gaps.is_empty());
         assert_eq!(report.dups_removed, 0);

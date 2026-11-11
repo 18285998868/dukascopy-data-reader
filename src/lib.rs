@@ -1,25 +1,22 @@
-//! Load OHLCV kline data from local Binance/Dukascopy directories into column vectors.
+//! Load Dukascopy OHLCV archive data into column vectors.
 //!
 //! See the crate README for layout and configuration details.
 
-pub mod app;
+mod app;
 mod config;
 mod error;
 mod python;
-#[cfg(test)]
-#[path = "test_helpers.rs"]
-mod test_helpers;
 mod types;
 
 pub use app::{KlineColumns, load_columns};
-pub use config::{DataConfig, DataSource, Market};
+pub use config::DataConfig;
 pub use error::{ReaderError, Result};
 use pyo3::prelude::*;
-pub use types::{Symbol, Timeframe, is_supported, supported_timeframes};
+pub use types::{Symbol, Timeframe, interval_ms_for, is_supported, supported_timeframes};
 
-/// Python extension module (`maturin build` → `import kline_reader`).
+/// Python extension module (`maturin build` → `import dukascopy_data_reader`).
 #[pymodule]
-fn kline_reader(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn dukascopy_data_reader(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(python::py_load_columns, m)?)?;
     Ok(())
 }

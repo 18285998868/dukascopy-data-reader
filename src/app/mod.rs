@@ -1,5 +1,3 @@
-#[path = "01_reader/binance.rs"]
-mod binance;
 #[path = "02_clean.rs"]
 mod clean;
 #[path = "03_column.rs"]
@@ -7,7 +5,7 @@ pub mod columns;
 #[path = "01_reader/dukascopy.rs"]
 mod dukascopy;
 
-use crate::config::{DataConfig, DataSource};
+use crate::config::DataConfig;
 use crate::error::{ReaderError, Result};
 use chrono::NaiveDate;
 use rayon::prelude::*;
@@ -15,8 +13,8 @@ use rayon::prelude::*;
 pub use columns::KlineColumns;
 
 /// 文件级硬失败零容忍阈值（回测准确性优先）：坏文件数超过即整批 `Err`。
-/// 行级坏行仍 warn 跳过（见各 reader）；此处只管“整个文件不可读”
-/// （损坏 zip/bi5、无 CSV、非法文件名日期）。
+/// 行级坏行仍 warn 跳过（见 reader）；此处只管“整个文件不可读”
+/// （损坏 bi5、非法文件名日期）。
 /// 调大此值可回退为 warn 模式（仍打汇总 warn 供复核）。
 pub(crate) const MAX_FAILED_FILES_TOLERATED: usize = 0;
 /// 失败文件留样上限（与坏行/缺口留样同口径）。
@@ -58,9 +56,9 @@ pub(crate) struct Record {
     pub volume: f64,
 }
 
-/// OHLC 行级校验（两源统一）：价格有限且 `> 0`，`volume` 有限且 `>= 0`，
+/// OHLC 行级校验：价格有限且 `> 0`，`volume` 有限且 `>= 0`，
 /// 且 `high >= max(open, low, close)`、`low <= min(open, high, close)`。
-/// 不满足即坏行（binance/clean 跳过计数，dukascopy 同）。
+/// 不满足即坏行（dukascopy 跳过计数）。
 /// 直接比较：此处是“陈述值”校验而非计算结果，无需容差。
 pub(crate) fn is_valid_ohlc(open: f64, high: f64, low: f64, close: f64, volume: f64) -> bool {
     for v in [open, high, low, close, volume] {
@@ -73,10 +71,10 @@ pub(crate) fn is_valid_ohlc(open: f64, high: f64, low: f64, close: f64, volume: 
     }
     high >= low && high >= open && high >= close && low <= open && low <= close
 }
-/// 行级 UTC 日期裁剪（两源统一）：保留 `open_time` 落在
+/// 行级 UTC 日期裁剪：保留 `open_time` 落在
 /// `[start 日 00:00, end 次日 00:00)` 的 bar。
 ///
-/// 文件级过滤是快路径（binance 按日文件名、dukascopy 按年/月周期），
+/// 文件级过滤是快路径（dukascopy 按年/月周期），
 /// 但年/月文件与区间部分重叠时会整文件保留，此处按行兜底，
 /// 保证越界 bar 不进回测。`end_date` 语义为 UTC 当日含整天。
 fn trim_to_date_range(
@@ -114,29 +112,19 @@ fn trim_to_date_range(
         .collect()
 }
 
-/// 逻辑编排: 管道分发 -> 加载数据 -> 行级日期裁剪 -> 全局排序 -> clean -> 列转置.
+/// 逻辑编排: 加载数据 -> 行级日期裁剪 -> 全局排序 -> clean -> 列转置.
 ///
 /// `config` 构造即有效，无需二次 `validate()`（`parse-don't-validate`）。
 /// 全局排序在此显式执行: `clean` 要求输入已按 `open_time` 有序.
 pub fn load_columns(config: &DataConfig) -> Result<KlineColumns> {
     // `dir` 直接用 `Path`，支持非 UTF-8 路径（`api-impl-asref`）。
-    let records = match config.source_type() {
-        DataSource::Binance => binance::load_pipeline(
-            config.dir(),
-            config.market(),
-            config.symbol(),
-            config.timeframe(),
-            config.start_date(),
-            config.end_date(),
-        )?,
-        DataSource::Dukascopy => dukascopy::load_dukascopy_pipeline(
-            config.dir(),
-            config.symbol(),
-            config.timeframe(),
-            config.start_date(),
-            config.end_date(),
-        )?,
-    };
+    let records = dukascopy::load_dukascopy_pipeline(
+        config.dir(),
+        config.symbol(),
+        config.timeframe(),
+        config.start_date(),
+        config.end_date(),
+    )?;
 
     let mut records = trim_to_date_range(records, config.start_date(), config.end_date());
     records.par_sort_by_key(|r| r.open_time);

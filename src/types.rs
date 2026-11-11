@@ -1,36 +1,23 @@
+//! Domain newtypes: symbol and Dukascopy timeframe.
+
 use std::fmt;
 
-use crate::config::DataSource;
 use crate::error::ReaderError;
 
-/// 单一真相源：timeframe 字符串 → 期望 bar 间隔（毫秒）。
-/// `config` 白名单与 `clean` 缺口检查都查同一张表，避免双源漂移。
+/// Single source of truth: timeframe → expected bar interval in milliseconds.
 const TIMEFRAME_INTERVALS_MS: &[(&str, i64)] = &[
-    ("1m", 60_000),
     ("M1", 60_000),
-    ("3m", 180_000),
-    ("5m", 300_000),
-    ("15m", 900_000),
-    ("30m", 1_800_000),
-    ("1h", 3_600_000),
+    ("1m", 60_000),
     ("H1", 3_600_000),
-    ("2h", 7_200_000),
-    ("4h", 14_400_000),
-    ("6h", 21_600_000),
-    ("8h", 28_800_000),
-    ("12h", 43_200_000),
-    ("1d", 86_400_000),
+    ("1h", 3_600_000),
     ("D1", 86_400_000),
-    ("1w", 604_800_000),
+    ("1d", 86_400_000),
 ];
 
-/// 各源允许的 timeframe（与历史白名单一致），间隔查上表。
-const BINANCE_TIMEFRAMES: &[&str] = &[
-    "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d",
-];
+/// Dukascopy timeframes accepted by [`Timeframe`].
 const DUKASCOPY_TIMEFRAMES: &[&str] = &["M1", "H1", "D1", "1m", "1h", "1d"];
 
-/// 间隔查询：未知周期返回 `None`，调用方决定跳过还是报错。
+/// Interval lookup: unknown timeframes return `None`.
 #[must_use]
 pub fn interval_ms_for(timeframe: &str) -> Option<i64> {
     TIMEFRAME_INTERVALS_MS
@@ -39,22 +26,16 @@ pub fn interval_ms_for(timeframe: &str) -> Option<i64> {
         .map(|(_, ms)| *ms)
 }
 
-/// Whether `timeframe` is supported for `source`.
+/// Whether `timeframe` is supported by Dukascopy archives.
 #[must_use]
-pub fn is_supported(source: DataSource, timeframe: &str) -> bool {
-    match source {
-        DataSource::Binance => BINANCE_TIMEFRAMES.contains(&timeframe),
-        DataSource::Dukascopy => DUKASCOPY_TIMEFRAMES.contains(&timeframe),
-    }
+pub fn is_supported(timeframe: &str) -> bool {
+    DUKASCOPY_TIMEFRAMES.contains(&timeframe)
 }
 
-/// List of timeframes supported for `source`.
+/// List of supported Dukascopy timeframes.
 #[must_use]
-pub fn supported_timeframes(source: DataSource) -> &'static [&'static str] {
-    match source {
-        DataSource::Binance => BINANCE_TIMEFRAMES,
-        DataSource::Dukascopy => DUKASCOPY_TIMEFRAMES,
-    }
+pub fn supported_timeframes() -> &'static [&'static str] {
+    DUKASCOPY_TIMEFRAMES
 }
 
 /// 已验证的交易对符号：构造时保证非空（去首尾空白后）。
@@ -91,7 +72,7 @@ impl AsRef<str> for Symbol {
     }
 }
 
-/// 已验证的时间周期：构造时按 `DataSource` 白名单校验，并绑定间隔。
+/// 已验证的时间周期：构造时按 Dukascopy 白名单校验，并绑定间隔。
 /// `interval_ms` 在构造时即确定，`clean` 不再二次查表失败。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Timeframe {
@@ -100,17 +81,13 @@ pub struct Timeframe {
 }
 
 impl Timeframe {
-    /// Parse and validate a timeframe for the given source.
-    pub fn parse(source: DataSource, s: impl AsRef<str>) -> Result<Self, ReaderError> {
+    /// Parse and validate a Dukascopy timeframe.
+    pub fn parse(s: impl AsRef<str>) -> Result<Self, ReaderError> {
         let s = s.as_ref().trim();
-        if !is_supported(source, s) {
-            let name = match source {
-                DataSource::Binance => "binance",
-                DataSource::Dukascopy => "dukascopy",
-            };
+        if !is_supported(s) {
             return Err(ReaderError::Config(format!(
-                "unsupported {name} timeframe: {s}, valid values: {:?}",
-                supported_timeframes(source)
+                "unsupported dukascopy timeframe: {s}, valid values: {:?}",
+                supported_timeframes()
             )));
         }
         let interval_ms = interval_ms_for(s).ok_or_else(|| {
@@ -155,32 +132,25 @@ mod tests {
     fn symbol_rejects_empty() {
         assert!(Symbol::parse("").is_err());
         assert!(Symbol::parse("   ").is_err());
-        assert_eq!(Symbol::parse(" BTCUSDT ").unwrap().as_str(), "BTCUSDT");
+        assert_eq!(Symbol::parse(" EURUSD ").unwrap().as_str(), "EURUSD");
     }
 
     #[test]
-    fn timeframe_per_source() {
-        assert!(Timeframe::parse(DataSource::Binance, "1m").is_ok());
-        assert!(Timeframe::parse(DataSource::Binance, "D1").is_err());
-        assert!(Timeframe::parse(DataSource::Dukascopy, "D1").is_ok());
-        assert!(Timeframe::parse(DataSource::Dukascopy, "3m").is_err());
+    fn timeframe_accepts_dukascopy_whitelist() {
+        assert!(Timeframe::parse("M1").is_ok());
+        assert!(Timeframe::parse("D1").is_ok());
+        assert_eq!(Timeframe::parse(" 1h ").unwrap().as_str(), "1h");
+        assert!(Timeframe::parse("4h").is_err());
+        assert!(Timeframe::parse("1w").is_err());
     }
 
     #[test]
-    fn interval_single_source() {
-        assert_eq!(interval_ms_for("1m"), Some(60_000));
-        assert_eq!(interval_ms_for("M1"), Some(60_000));
+    fn timeframe_binds_interval() {
+        assert_eq!(Timeframe::parse("M1").unwrap().interval_ms(), 60_000);
+        assert_eq!(Timeframe::parse("H1").unwrap().interval_ms(), 3_600_000);
+        assert_eq!(Timeframe::parse("D1").unwrap().interval_ms(), 86_400_000);
         assert_eq!(interval_ms_for("1d"), Some(86_400_000));
         assert_eq!(interval_ms_for("3d"), None);
-    }
-
-    #[test]
-    fn supported_timeframes_per_source() {
-        assert!(is_supported(DataSource::Binance, "1m"));
-        assert!(!is_supported(DataSource::Binance, "D1"));
-        assert!(is_supported(DataSource::Dukascopy, "D1"));
-        assert!(!is_supported(DataSource::Dukascopy, "3m"));
-        assert!(supported_timeframes(DataSource::Binance).contains(&"1d"));
-        assert!(supported_timeframes(DataSource::Dukascopy).contains(&"M1"));
+        assert!(supported_timeframes().contains(&"H1"));
     }
 }

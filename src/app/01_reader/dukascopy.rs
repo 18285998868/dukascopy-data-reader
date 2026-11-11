@@ -410,13 +410,11 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    use crate::config::DataSource;
-
     fn sym(s: &str) -> Symbol {
         Symbol::parse(s).unwrap()
     }
     fn tf_d(s: &str) -> Timeframe {
-        Timeframe::parse(DataSource::Dukascopy, s).unwrap()
+        Timeframe::parse(s).unwrap()
     }
     fn pd(s: &str) -> NaiveDate {
         NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
@@ -670,8 +668,7 @@ mod tests {
 
     #[test]
     fn load_real_eurusd_d1() {
-        let path =
-            Path::new("/data/data/dukascopy/EURUSD/2025/BID_candles_day_1.bi5");
+        let path = Path::new("/data/data/dukascopy/EURUSD/2025/BID_candles_day_1.bi5");
         if !path.exists() {
             eprintln!("skipping: {path:?} not found");
             return;
@@ -684,8 +681,7 @@ mod tests {
 
     #[test]
     fn load_real_eurusd_m1() {
-        let path =
-            Path::new("/data/data/dukascopy/EURUSD/2024/06/01/BID_candles_min_1.bi5");
+        let path = Path::new("/data/data/dukascopy/EURUSD/2024/06/01/BID_candles_min_1.bi5");
         if !path.exists() {
             eprintln!("skipping: {path:?} not found");
             return;

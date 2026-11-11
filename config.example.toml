@@ -1,20 +1,12 @@
-# 配置说明: 全部字段以小写字母开头
+# 单品种单周期配置 (Dukascopy)
 #
-# 目录约定 (重要): dir 是数据**根目录**, 程序按数据源自动追加子路径,
-#   binance:   {dir}/binance/data/{market}/daily/klines/{symbol}/{timeframe}/*.zip
-#             market = "spot" | "futures/um" | "futures/cm", 默认 "futures/um"
-#             (zip 内含 {symbol}-{tf}-{YYYY-MM-DD}.csv, Binance 官方 12 列取前 6)
-#   dukascopy: {dir}/dukascopy/{symbol}/{YYYY}[/{MM}[/{DD}]]/{BID|ASK}_candles_{min_1|hour_1|day_1}.bi5 (官方镜像布局, LZMA 压缩, 每记录 24 字节大端)
-# 因此不要把子路径写进 dir, 否则会找不到目录:
-#   错误: dir = "path/to/data/binance/data/futures/um/daily/klines"
-#   正确: dir = "path/to/data"
+# 目录约定 (重要): dir 是数据根目录, 程序自动追加 dukascopy/{symbol}/,
+#   {dir}/dukascopy/{symbol}/{YYYY}[/{MM}[/{DD}]]/{BID|ASK}_candles_{min_1|hour_1|day_1}.bi5
+# 因此不要把子路径写进 dir.
 #
-# 单品种单周期: 一个文件只描述一对 symbol/timeframe, 多品种请写多个文件或调多次 load_columns.
 # 日期语义均为 UTC; end_date 含当日整天.
-type = "binance" # 数据源类型, 必填, 可选参数: "binance" | "dukascopy"
-market = "futures/um" # Binance 市场, 可选, 默认 futures/um; 可选: spot | futures/um | futures/cm (兼容 um/cm)
-dir = "path/to/data" # K线数据根目录, 必填
-symbol = "BTCUSDT" # 品种, 必填, 单值
-timeframe = "1d" # 时间帧, 必填, 单值; binance: "1m"~"1d", dukascopy: "M1"/"H1"/"D1" (另兼容 "1m"/"1h"/"1d")
-# start_date = "2024-01-01" # 数据起始日期, 可选, 默认值: 无(全部数据), 可选参数: YYYY-MM-DD
-# end_date = "2024-12-31" # 数据结束日期(含当日), 可选, 默认值: 无(全部数据), 可选参数: YYYY-MM-DD
+dir = "path/to/data" # 数据根目录, 必填
+symbol = "EURUSD" # 品种, 必填
+timeframe = "D1" # 时间帧, 必填; M1 | H1 | D1 (兼容 1m | 1h | 1d)
+# start_date = "2024-01-01" # 可选, 格式 YYYY-MM-DD
+# end_date = "2024-12-31" # 可选, 含当日
