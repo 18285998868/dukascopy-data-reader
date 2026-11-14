@@ -1,0 +1,10 @@
+# Smoke request: July 2023 hourly candles live under the zero-based `2023/06`
+# directory. The file is real Dukascopy data; run it through
+# `cargo run --release --example load -- config/00.smoke.toml`.
+
+root = "/data/data"
+symbol = "EURUSD"
+timeframe = "H1"
+price_type = "BID"
+start_date = "2023-07-01"
+end_date = "2023-07-31"

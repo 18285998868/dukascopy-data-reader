@@ -4,9 +4,15 @@ build-backend = "maturin"
 
 [project]
 name = "dukascopy-data-reader"
-version = "0.1.0"
+version = "0.2.0"
+description = "Load Dukascopy public archive candles into NumPy column arrays."
 requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[project.optional-dependencies]
+numpy = ["numpy>=2"]
 
 [tool.maturin]
 bindings = "pyo3"
 module-name = "dukascopy_data_reader"
+features = ["python"]

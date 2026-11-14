@@ -1,75 +1,112 @@
 # dukascopy-data-reader
 
-> 从本地 Dukascopy 公共归档加载 OHLCV 为列向量。只负责加载、读取、清洗数据；
-> 格式转换由下游自行处理。
+从本地 Dukascopy 公共归档读取 OHLCV 列向量。只负责加载、解码与报告；
+格式转换、指标计算由下游完成。
 
 ## 数据布局
 
-`dir` 为数据根目录，reader 自动追加 `dukascopy/{symbol}/`：
+`root` 是 downloader 的 `output_dir`，reader 自动追加 `dukascopy/{symbol}/`：
 
 ```text
-{dir}/dukascopy/{symbol}/{YYYY}/BID_candles_day_1.bi5
-{dir}/dukascopy/{symbol}/{YYYY}/{MM}/BID_candles_hour_1.bi5
-{dir}/dukascopy/{symbol}/{YYYY}/{MM}/{DD}/BID_candles_min_1.bi5
+{root}/dukascopy/{symbol}/{YYYY}/BID_candles_day_1.bi5
+{root}/dukascopy/{symbol}/{YYYY}/{MM}/BID_candles_hour_1.bi5
+{root}/dukascopy/{symbol}/{YYYY}/{MM}/{DD}/BID_candles_min_1.bi5
 ```
 
+- 路径月份为 **0-based**：`00` = 1 月，`11` = 12 月；年、日仍为 1-based。
+  这是 Dukascopy datafeed 的原始约定，本地镜像与 URL 完全一致。
+- `D1` 每年一个文件，`H1` 每月一个，`M1` 每天一个。
 - LZMA 压缩，每条记录 24 字节大端：
-  `time_secs:u32` + `open/close/low/high`（各 u32，`/100000`）+ `volume:u32`。
-- 支持 `M1`/`H1`/`D1`，另兼容 `1m`/`1h`/`1d`。
-- 同时扫描 `BID_` 与 `ASK_` 文件；周期与请求时间帧不匹配的文件跳过。
+  `time_secs:u32, open:u32, close:u32, low:u32, high:u32, volume:u32`。
+  价格除以 `100000`，时间戳是相对桶起点的秒偏移。
+- 支持 `M1`/`H1`/`D1`，别名 `1m`/`1h`/`1d`；价格侧 `BID`/`ASK`。
+
+## Rust
+
+```toml
+[dependencies]
+dukascopy-data-reader = "0.2"
+```
+
+```rust
+use chrono::NaiveDate;
+use dukascopy_data_reader::{DataConfig, Timeframe, load};
+
+let config = DataConfig::new("/data/data", "EURUSD", Timeframe::H1)?
+    .with_date_range(
+        Some(NaiveDate::from_ymd_opt(2023, 7, 1).unwrap()),
+        Some(NaiveDate::from_ymd_opt(2023, 7, 31).unwrap()),
+    )?;
+let loaded = load(&config)?;
+assert_eq!(loaded.columns().len(), 744);
+assert!(loaded.report().is_complete());
+```
+
+`load_columns` 只返回列；`load` 同时返回 `LoadReport`：
+
+- 请求/加载/缺失文件数，缺失路径与对应桶；
+- 解码、裁剪、非法 OHLC、越界时间戳、重复行计数；
+- 缺口段数、缺失 bar 数、错位段数与有限样本；
+- 首末 bar 时间与 `is_complete()`。
+
+列均为等长 `Vec`：`time: i64`（Unix 毫秒，UTC）、OHLC `f64`、`volume: u32`
+（原始值，不归一化）。
 
 ## 配置
 
 ```toml
-dir = "path/to/data"
+root = "/data/data"
 symbol = "EURUSD"
-timeframe = "D1" # M1 | H1 | D1 (兼容 1m | 1h | 1d)
-# start_date = "2024-01-01"
-# end_date = "2024-12-31" # 含当日整天 (UTC)
+timeframe = "H1"
+price_type = "BID" # 可选，默认 BID
+start_date = "2023-07-01" # 可选，含当日 (UTC)
+end_date = "2023-07-31" # 可选，含当日 (UTC)
 ```
 
-```rust
-let cfg: DataConfig = toml::from_str(&config_str)?;
-let cols: KlineColumns = load_columns(&cfg)?;
-```
-
-`DataConfig` 构造即完成全部校验（品种、周期、日期范围），非法输入返回
-`ReaderError::Config`。
+`DataConfig` 在构造/反序列化时完成全部校验，未知字段直接报错。
+完整字段见 [`config/00.example.toml`](config/00.example.toml)。
 
 ## Python
+
+```bash
+python -m pip install maturin
+maturin develop --features python
+```
 
 ```python
 import dukascopy_data_reader
 
-cols = dukascopy_data_reader.load_columns({
-    "dir": "path/to/data",
+columns = dukascopy_data_reader.load_columns({
+    "root": "/data/data",
     "symbol": "EURUSD",
-    "timeframe": "D1",
+    "timeframe": "H1",
+    "start_date": "2023-07-01",
+    "end_date": "2023-07-31",
 })
+# time int64[ms], OHLC float64, volume uint32
+print(columns["time"][:3], columns["close"][-1])
 ```
 
-Python 绑定只负责解析参数并调用 Rust 接口。
+`load()` 返回 `(columns, report)`。Python 绑定与 Rust 共用同一套校验和加载路径。
 
 ## 处理语义
 
-- 单文件硬失败零容忍：损坏 `.bi5`、非法文件名日期 → 整批 `Err`。
-- 行级坏 OHLC warn 并跳过（留样上限 5）。
-- 年/月文件与请求区间重叠时整文件读取，再按行裁剪到
-  `[start 00:00, end 次日 00:00)`。
-- 全局按 `open_time` 排序、去重 keep-first、缺口只报告不填充。
+- 损坏 `.bi5`（LZMA 失败、解压长度非 24 倍数）→ 带路径的硬错误。
+- 缺失文件不报错，进入 `LoadReport::missing_files`；`is_complete()` 为 false。
+- 非法 OHLC 行跳过并计数；时间戳不在所属桶内的行跳过并计数。
+- 有界区间只展开请求的桶，不扫描全历史；解码按 64 文件分批并行。
+- 仅当时间列乱序时排序；重复 `open_time` 保留首行并计数。
+- 缺口只报告、不填充；Dukascopy 的周末/休市零量平坦 bar 原样保留。
 
-## 架构
+## 开发
 
-```text
-src/
-  lib.rs                 导出 + PyO3 模块
-  config.rs              DataConfig
-  types.rs               Symbol / Timeframe
-  app/mod.rs             load_columns 编排
-  app/01_reader/dukascopy.rs  扫描、解压、解析
-  app/02_clean.rs        去重与缺口检查
-  app/03_column.rs       OHLCV 列转置
+```bash
+./scripts/check.sh
+cargo run --release --example load -- config/00.smoke.toml
 ```
 
-依赖：`lzma-rs`、`walkdir`、`chrono`、`rayon`、`serde`、`thiserror`、`tracing`、
-`pyo3`（abi3-py39）。
+执行路径与退出码见 [STEP.md](STEP.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 许可证
+
+MIT

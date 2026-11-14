@@ -1,0 +1,24 @@
+# Dukascopy reader request: one symbol x timeframe x price side.
+#
+# The reader appends the mirror prefix itself:
+#   {root}/dukascopy/{symbol}/{YYYY}[/{MM}[/{DD}]]/{BID|ASK}_candles_{min_1|hour_1|day_1}.bi5
+#
+# Path months are zero-based (00 = January, 11 = December), matching
+# Dukascopy's datafeed. Years and days stay one-based. Dates below are normal
+# calendar dates; conversion happens only when rendering or parsing a path.
+
+# Downloader output_dir. Do not append `dukascopy/` or the symbol here.
+root = "/data/data"
+
+# Archive directory name below `dukascopy/`.
+symbol = "EURUSD"
+
+# M1 | H1 | D1 (aliases: 1m | 1h | 1d).
+timeframe = "H1"
+
+# BID | ASK; optional, defaults to BID.
+price_type = "BID"
+
+# Optional inclusive UTC date range. Omit both to load every bucket on disk.
+# start_date = "2023-07-01"
+# end_date = "2023-07-31"

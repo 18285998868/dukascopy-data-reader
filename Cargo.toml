@@ -2,30 +2,40 @@
 
 [package]
 name = "dukascopy-data-reader"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.89"
 authors = ["NautilusTrader Developer"]
 license = "MIT"
 description = "Load Dukascopy public archive candles into column vectors."
+repository = "https://github.com/nautechsystems/dukascopy-data-reader"
+keywords = ["dukascopy", "candles", "ohlcv", "market-data"]
+categories = ["finance", "parser-implementations"]
 
 [lib]
 name = "dukascopy_data_reader"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+# Python extension (`maturin`); keep opt-in so Rust-only users do not build PyO3.
+python = ["dep:pyo3", "dep:numpy"]
+
 [dependencies]
-chrono = { version = "0.4", features = ["serde"] }
-tracing = { version = "0.1", features = ["log"] }
-thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+lzma-rust2 = "0.25"
 rayon = "1"
-lzma-rs = "0.3"
-walkdir = "2"
 serde = { version = "1", features = ["derive"] }
-pyo3 = { version = "0.30", features = ["abi3-py39"] }
+thiserror = "2"
+tracing = "0.1"
+numpy = { version = "0.30", optional = true }
+pyo3 = { version = "0.30", features = ["abi3-py39"], optional = true }
 
 [dev-dependencies]
+lzma-rust2 = { version = "0.25", features = ["encoder"] }
 tempfile = "3"
 toml = "1.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lints.rust]
 warnings = "deny"
